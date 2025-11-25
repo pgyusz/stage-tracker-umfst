@@ -30,7 +30,10 @@
         <aside id="setupPanel" class="panel" aria-label="Setup panel">
             <div class="panelHeader">
                 <h2>Setup</h2>
-                <div class="hint">Tip: Use <b>Auto</b> so everyone sees the same thing without a server.</div>
+                <div class="hint">
+                    Tip: Use <b>Auto</b> so everyone sees the same thing without a server.
+                    <br />You can also prefill everything via <code>config.json</code>.
+                </div>
             </div>
 
             <section class="card">
@@ -97,8 +100,10 @@
 
             <section class="card">
                 <h3>Import / Export</h3>
+                <div class="hint">Export/Import JSON uses <b>1–10</b> (human-friendly).</div>
                 <div class="row">
                     <button id="btnExport" class="btn">Export JSON</button>
+                    <button id="btnDownload" class="btn">Download JSON</button>
                     <button id="btnImport" class="btn">Import JSON</button>
                 </div>
                 <textarea id="jsonBox" class="jsonBox" spellcheck="false"

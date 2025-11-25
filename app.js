@@ -1,9 +1,12 @@
 /* Stage Tracker (static, no backend)
    - 10 teams rotate through 10 stages
    - Internally 0-based; UI shows 1–10
+   - Loads ./config.json if localStorage is empty (and no share-hash)
+   - Export/Import JSON uses human 1–10 format
 */
 
 const STORAGE_KEY = "stage-tracker-v1";
+const CONFIG_URL = "./config.json";
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, props = {}, children = []) => {
@@ -34,32 +37,12 @@ function defaultState() {
     };
 }
 
-function loadState() {
-    const shared = decodeStateFromHash();
-    if (shared) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(shared)); } catch { }
-        return shared;
-    }
-
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return defaultState();
-        const parsed = JSON.parse(raw);
-        return normalizeState(parsed);
-    } catch {
-        return defaultState();
-    }
-}
-
-function saveState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { }
-}
-
 function normalizeState(s) {
     const d = defaultState();
     const out = { ...d, ...s };
 
     out.nStages = Number(out.nStages) || 10;
+
     if (!Array.isArray(out.stages) || out.stages.length !== out.nStages) out.stages = d.stages;
     if (!Array.isArray(out.teams) || out.teams.length !== out.nStages) out.teams = d.teams;
 
@@ -82,6 +65,52 @@ function normalizeState(s) {
     return out;
 }
 
+/* --- Human JSON (1..10) ↔ internal (0..9) --- */
+function toHumanState(internal) {
+    const n = internal.nStages;
+    return {
+        __format: "human-1-based",
+        ...internal,
+        manualRound: mod(internal.manualRound, n) + 1,
+        teams: internal.teams.map(t => ({
+            ...t,
+            startStage: mod(t.startStage, n) + 1
+        }))
+    };
+}
+
+function toInternalFromMaybeHuman(obj) {
+    const n = 10;
+
+    const looksHuman =
+        obj?.__format === "human-1-based" ||
+        (Array.isArray(obj?.teams) && obj.teams.some(t => Number(t.startStage) === 10)) ||
+        (Number(obj?.manualRound) >= 1 && Number(obj?.manualRound) <= 10);
+
+    const copy = structuredClone(obj ?? {});
+
+    if (looksHuman) {
+        if (typeof copy.manualRound === "number" || typeof copy.manualRound === "string") {
+            const v = Number(copy.manualRound);
+            if (!Number.isNaN(v)) copy.manualRound = mod(v - 1, n);
+        }
+        if (Array.isArray(copy.teams)) {
+            copy.teams = copy.teams.map(t => {
+                const v = Number(t?.startStage);
+                if (Number.isNaN(v)) return t;
+                // If it's 1..10, treat as human
+                if (v >= 1 && v <= n) return { ...t, startStage: v - 1 };
+                // Else keep as is (assume internal)
+                return t;
+            });
+        }
+    }
+
+    delete copy.__format;
+    return normalizeState(copy);
+}
+
+/* --- Share link encoding (internal) --- */
 function encodeStateToHash(s) {
     const json = JSON.stringify(s);
     const b64 = btoa(unescape(encodeURIComponent(json)));
@@ -103,6 +132,34 @@ function decodeStateFromHash() {
     }
 }
 
+/* --- Storage helpers --- */
+function loadFromLocalStorage() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        return normalizeState(JSON.parse(raw));
+    } catch {
+        return null;
+    }
+}
+
+function saveToLocalStorage() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { }
+}
+
+/* --- config.json loader --- */
+async function loadFromConfigJson() {
+    try {
+        const res = await fetch(CONFIG_URL, { cache: "no-store" });
+        if (!res.ok) return null;
+        const obj = await res.json();
+        return toInternalFromMaybeHuman(obj);
+    } catch {
+        return null;
+    }
+}
+
+/* --- Time / round logic --- */
 function parseLocalDateTime(dtLocalStr) {
     if (!dtLocalStr) return null;
     const d = new Date(dtLocalStr);
@@ -140,6 +197,7 @@ function assignmentForRound(round) {
     return { teamAtStage, stageOfTeam };
 }
 
+/* --- Rendering --- */
 function renderWarnings(round) {
     const w = $("#warnings");
     w.innerHTML = "";
@@ -147,7 +205,6 @@ function renderWarnings(round) {
     const counts = new Map();
     for (const t of state.teams) counts.set(t.startStage, (counts.get(t.startStage) || 0) + 1);
 
-    // show dupes as 1..10
     const dupes = [...counts.entries()].filter(([, c]) => c > 1).map(([s]) => s + 1);
 
     if (dupes.length) {
@@ -191,7 +248,7 @@ function renderEditors() {
                 placeholder: `Stage ${i + 1}`,
                 oninput: (e) => {
                     state.stages[i].name = e.target.value;
-                    saveState();
+                    saveToLocalStorage();
                     renderAll();
                 }
             }),
@@ -201,7 +258,7 @@ function renderEditors() {
                 placeholder: `Professor`,
                 oninput: (e) => {
                     state.stages[i].professor = e.target.value;
-                    saveState();
+                    saveToLocalStorage();
                     renderAll();
                 }
             }),
@@ -214,11 +271,11 @@ function renderEditors() {
     teamsEditor.innerHTML = "";
     state.teams.forEach((t, i) => {
         const startSel = el("select", {
-            value: String(t.startStage + 1), // UI 1..10
+            value: String(t.startStage + 1),
             onchange: (e) => {
-                const uiVal = parseInt(e.target.value, 10) || 1;        // 1..10
-                state.teams[i].startStage = mod(uiVal - 1, state.nStages); // internal 0..9
-                saveState();
+                const uiVal = parseInt(e.target.value, 10) || 1; // 1..10
+                state.teams[i].startStage = mod(uiVal - 1, state.nStages);
+                saveToLocalStorage();
                 renderAll();
             }
         });
@@ -238,7 +295,7 @@ function renderEditors() {
                 placeholder: `Team ${i + 1}`,
                 oninput: (e) => {
                     state.teams[i].name = e.target.value;
-                    saveState();
+                    saveToLocalStorage();
                     renderAll();
                 }
             }),
@@ -256,7 +313,6 @@ function renderEditors() {
 function renderStageView(round) {
     const n = state.nStages;
     const nextRound = mod(round + 1, n);
-
     const curr = assignmentForRound(round);
     const next = assignmentForRound(nextRound);
 
@@ -278,7 +334,6 @@ function renderStageView(round) {
                     el("div", { className: "stageName", textContent: stage.name }),
                     el("div", { className: "prof", textContent: stage.professor ? `Prof: ${stage.professor}` : "Prof: —" })
                 ]),
-                // UI stage number: 1..10
                 el("div", { className: "stageNum", textContent: `#${si + 1}` })
             ]),
             el("div", { className: "bigTeam", textContent: teamName }),
@@ -293,7 +348,6 @@ function renderStageView(round) {
 function renderTeamView(round) {
     const n = state.nStages;
     const nextRound = mod(round + 1, n);
-
     const curr = assignmentForRound(round);
     const next = assignmentForRound(nextRound);
 
@@ -324,7 +378,6 @@ function renderTeamView(round) {
 function renderStatus(round) {
     const n = state.nStages;
 
-    // UI rounds: 1..10
     $("#kpiRound").textContent = String(round + 1);
     $("#kpiInfo").textContent = `Next is round ${mod(round + 1, n) + 1} (cycle length ${n})`;
 
@@ -336,9 +389,7 @@ function renderStatus(round) {
 }
 
 function renderAll() {
-    const nowMs = Date.now();
-    const round = computeRound(nowMs);
-
+    const round = computeRound(Date.now());
     renderWarnings(round);
     renderStatus(round);
 
@@ -353,7 +404,8 @@ function renderAll() {
     }
 }
 
-let state = loadState();
+/* --- UI wiring --- */
+let state = defaultState();
 
 function syncInputsFromState() {
     document.querySelectorAll('input[name="mode"]').forEach(r => {
@@ -362,8 +414,6 @@ function syncInputsFromState() {
 
     $("#startAt").value = state.startAt || "";
     $("#roundMinutes").value = String(state.roundMinutes);
-
-    // slider is 1..10; state.manualRound is 0..9
     $("#manualRound").value = String(state.manualRound + 1);
 }
 
@@ -374,12 +424,13 @@ function attachHandlers() {
 
     $("#btnViewStages").addEventListener("click", () => {
         state.view = "stages";
-        saveState();
+        saveToLocalStorage();
         renderAll();
     });
+
     $("#btnViewTeams").addEventListener("click", () => {
         state.view = "teams";
-        saveState();
+        saveToLocalStorage();
         renderAll();
     });
 
@@ -398,28 +449,27 @@ function attachHandlers() {
     document.querySelectorAll('input[name="mode"]').forEach(r => {
         r.addEventListener("change", (e) => {
             state.mode = e.target.value === "manual" ? "manual" : "auto";
-            saveState();
+            saveToLocalStorage();
             renderAll();
         });
     });
 
     $("#startAt").addEventListener("change", (e) => {
         state.startAt = e.target.value;
-        saveState();
+        saveToLocalStorage();
         renderAll();
     });
 
     $("#roundMinutes").addEventListener("input", (e) => {
         state.roundMinutes = Math.max(1, Number(e.target.value) || 10);
-        saveState();
+        saveToLocalStorage();
         renderAll();
     });
 
-    // slider UI 1..10 -> internal 0..9
     $("#manualRound").addEventListener("input", (e) => {
         const uiVal = Number(e.target.value) || 1; // 1..10
         state.manualRound = mod(uiVal - 1, state.nStages);
-        saveState();
+        saveToLocalStorage();
         renderAll();
     });
 
@@ -428,14 +478,14 @@ function attachHandlers() {
         const pad = (x) => String(x).padStart(2, "0");
         const dtLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
         state.startAt = dtLocal;
-        saveState();
+        saveToLocalStorage();
         syncInputsFromState();
         renderAll();
     });
 
     $("#btnReset").addEventListener("click", () => {
         state = defaultState();
-        saveState();
+        saveToLocalStorage();
         window.location.hash = "";
         syncInputsFromState();
         renderEditors();
@@ -443,16 +493,29 @@ function attachHandlers() {
     });
 
     $("#btnExport").addEventListener("click", () => {
-        $("#jsonBox").value = JSON.stringify(state, null, 2);
+        $("#jsonBox").value = JSON.stringify(toHumanState(state), null, 2);
+    });
+
+    $("#btnDownload").addEventListener("click", () => {
+        const data = JSON.stringify(toHumanState(state), null, 2);
+        const blob = new Blob([data], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "stage-tracker.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     });
 
     $("#btnImport").addEventListener("click", () => {
         const raw = $("#jsonBox").value.trim();
         if (!raw) return alert("Paste JSON first.");
         try {
-            const parsed = normalizeState(JSON.parse(raw));
-            state = parsed;
-            saveState();
+            const parsed = JSON.parse(raw);
+            state = toInternalFromMaybeHuman(parsed);
+            saveToLocalStorage();
             syncInputsFromState();
             renderEditors();
             renderAll();
@@ -462,9 +525,21 @@ function attachHandlers() {
     });
 }
 
-function boot() {
-    state = normalizeState(state);
-    saveState();
+/* --- Boot (priority: share-link > localStorage > config.json > defaults) --- */
+async function boot() {
+    const shared = decodeStateFromHash();
+    if (shared) {
+        state = normalizeState(shared);
+    } else {
+        const stored = loadFromLocalStorage();
+        if (stored) {
+            state = normalizeState(stored);
+        } else {
+            const cfg = await loadFromConfigJson();
+            state = cfg ? normalizeState(cfg) : defaultState();
+            saveToLocalStorage();
+        }
+    }
 
     syncInputsFromState();
     renderEditors();

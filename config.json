@@ -1,0 +1,91 @@
+{
+    "__format": "human-1-based",
+    "mode": "auto",
+    "startAt": "",
+    "roundMinutes": 10,
+    "manualRound": 1,
+    "stages": [
+        {
+            "name": "Stage 1",
+            "professor": "Professor A"
+        },
+        {
+            "name": "Stage 2",
+            "professor": "Professor B"
+        },
+        {
+            "name": "Stage 3",
+            "professor": "Professor C"
+        },
+        {
+            "name": "Stage 4",
+            "professor": "Professor D"
+        },
+        {
+            "name": "Stage 5",
+            "professor": "Professor E"
+        },
+        {
+            "name": "Stage 6",
+            "professor": "Professor F"
+        },
+        {
+            "name": "Stage 7",
+            "professor": "Professor G"
+        },
+        {
+            "name": "Stage 8",
+            "professor": "Professor H"
+        },
+        {
+            "name": "Stage 9",
+            "professor": "Professor I"
+        },
+        {
+            "name": "Stage 10",
+            "professor": "Professor J"
+        }
+    ],
+    "teams": [
+        {
+            "name": "Team 1",
+            "startStage": 1
+        },
+        {
+            "name": "Team 2",
+            "startStage": 2
+        },
+        {
+            "name": "Team 3",
+            "startStage": 3
+        },
+        {
+            "name": "Team 4",
+            "startStage": 4
+        },
+        {
+            "name": "Team 5",
+            "startStage": 5
+        },
+        {
+            "name": "Team 6",
+            "startStage": 6
+        },
+        {
+            "name": "Team 7",
+            "startStage": 7
+        },
+        {
+            "name": "Team 8",
+            "startStage": 8
+        },
+        {
+            "name": "Team 9",
+            "startStage": 9
+        },
+        {
+            "name": "Team 10",
+            "startStage": 10
+        }
+    ]
+}
