@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>School Stage Tracker</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <div class="logo" aria-hidden="true">⟳</div>
+            <div>
+                <div class="title">Stage Tracker</div>
+                <div class="subtitle">10 teams · 10 stages · current + next</div>
+            </div>
+        </div>
+
+        <div class="top-actions">
+            <button id="btnToggleSetup" class="btn">Setup</button>
+            <button id="btnViewStages" class="btn btnPrimary">Stage view</button>
+            <button id="btnViewTeams" class="btn">Team view</button>
+            <button id="btnCopyLink" class="btn">Copy share link</button>
+        </div>
+    </header>
+
+    <main class="layout">
+        <aside id="setupPanel" class="panel" aria-label="Setup panel">
+            <div class="panelHeader">
+                <h2>Setup</h2>
+                <div class="hint">Tip: Use <b>Auto</b> so everyone sees the same thing without a server.</div>
+            </div>
+
+            <section class="card">
+                <h3>Timing</h3>
+
+                <div class="row">
+                    <label class="radio">
+                        <input type="radio" name="mode" value="auto" checked />
+                        <span>Auto (based on clock)</span>
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="mode" value="manual" />
+                        <span>Manual (you pick round)</span>
+                    </label>
+                </div>
+
+                <div class="grid2">
+                    <label>
+                        <span>Start time</span>
+                        <input id="startAt" type="datetime-local" />
+                    </label>
+
+                    <label>
+                        <span>Round length (minutes)</span>
+                        <input id="roundMinutes" type="number" min="1" step="1" value="10" />
+                    </label>
+                </div>
+
+                <div class="grid2">
+                    <label>
+                        <span>Manual round (0–9)</span>
+                        <input id="manualRound" type="range" min="0" max="9" value="0" />
+                    </label>
+
+                    <div class="kpi">
+                        <div class="kpiLabel">Current round</div>
+                        <div id="kpiRound" class="kpiValue">0</div>
+                        <div id="kpiInfo" class="kpiSub">—</div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <button id="btnStartNow" class="btn btnPrimary">Set start = now</button>
+                    <button id="btnReset" class="btn btnDanger">Reset defaults</button>
+                </div>
+
+                <div id="warnings" class="warnings" role="status" aria-live="polite"></div>
+            </section>
+
+            <section class="card">
+                <h3>Stages (10)</h3>
+                <div class="hint">Each stage is a “station” with a professor.</div>
+                <div id="stagesEditor" class="editorList"></div>
+            </section>
+
+            <section class="card">
+                <h3>Teams (10)</h3>
+                <div class="hint">
+                    Each team also has a <b>starting stage</b>. For a perfect rotation, every team should have a
+                    different start stage (0–9).
+                </div>
+                <div id="teamsEditor" class="editorList"></div>
+            </section>
+
+            <section class="card">
+                <h3>Import / Export</h3>
+                <div class="row">
+                    <button id="btnExport" class="btn">Export JSON</button>
+                    <button id="btnImport" class="btn">Import JSON</button>
+                </div>
+                <textarea id="jsonBox" class="jsonBox" spellcheck="false"
+                    placeholder="Export shows JSON here. Paste JSON here and click Import."></textarea>
+            </section>
+        </aside>
+
+        <section class="content" aria-label="Main views">
+            <div id="statusBar" class="statusBar">
+                <div class="pill" id="pillMode">Mode: Auto</div>
+                <div class="pill" id="pillCycle">Cycle: Round 0 / 9</div>
+                <div class="pill" id="pillClock">Local time: —</div>
+            </div>
+
+            <div id="viewStages" class="view"></div>
+            <div id="viewTeams" class="view hidden"></div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <span>Works offline. Host it anywhere (GitHub Pages / Cloudflare Pages / Netlify / Vercel).</span>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
