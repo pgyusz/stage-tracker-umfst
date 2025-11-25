@@ -1,6 +1,6 @@
 /* Stage Tracker (static, no backend)
    - 10 teams rotate through 10 stages
-   - Round r determines "current" positions; r+1 determines "next"
+   - Internally 0-based; UI shows 1–10
 */
 
 const STORAGE_KEY = "stage-tracker-v1";
@@ -21,26 +21,23 @@ function defaultState() {
         mode: "auto",                 // "auto" | "manual"
         startAt: "",                  // datetime-local string
         roundMinutes: 10,
-        manualRound: 0,
+        manualRound: 0,               // internal 0..9 (UI 1..10)
         stages: Array.from({ length: n }, (_, i) => ({
             name: `Stage ${i + 1}`,
             professor: `Professor ${String.fromCharCode(65 + i)}`
         })),
         teams: Array.from({ length: n }, (_, i) => ({
             name: `Team ${i + 1}`,
-            startStage: i               // perfect permutation by default
+            startStage: i               // internal 0..9 (UI 1..10)
         })),
         view: "stages"                // "stages" | "teams"
     };
 }
 
 function loadState() {
-    // URL hash share takes precedence
     const shared = decodeStateFromHash();
     if (shared) {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(shared));
-        } catch { }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(shared)); } catch { }
         return shared;
     }
 
@@ -55,16 +52,13 @@ function loadState() {
 }
 
 function saveState() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch { }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { }
 }
 
 function normalizeState(s) {
     const d = defaultState();
     const out = { ...d, ...s };
 
-    // enforce 10 unless user hacked it
     out.nStages = Number(out.nStages) || 10;
     if (!Array.isArray(out.stages) || out.stages.length !== out.nStages) out.stages = d.stages;
     if (!Array.isArray(out.teams) || out.teams.length !== out.nStages) out.teams = d.teams;
@@ -75,7 +69,6 @@ function normalizeState(s) {
     out.view = out.view === "teams" ? "teams" : "stages";
     out.startAt = typeof out.startAt === "string" ? out.startAt : "";
 
-    // clamp startStage values
     out.teams = out.teams.map((t, i) => ({
         name: typeof t.name === "string" && t.name.trim() ? t.name : `Team ${i + 1}`,
         startStage: mod(Number(t.startStage) || 0, out.nStages)
@@ -92,7 +85,6 @@ function normalizeState(s) {
 function encodeStateToHash(s) {
     const json = JSON.stringify(s);
     const b64 = btoa(unescape(encodeURIComponent(json)));
-    // url-safe-ish base64
     const safe = b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
     return `#s=${safe}`;
 }
@@ -112,7 +104,6 @@ function decodeStateFromHash() {
 }
 
 function parseLocalDateTime(dtLocalStr) {
-    // input type=datetime-local returns something like "2025-11-25T09:00"
     if (!dtLocalStr) return null;
     const d = new Date(dtLocalStr);
     return isNaN(d.getTime()) ? null : d;
@@ -129,15 +120,12 @@ function computeRound(nowMs) {
     const lenMs = state.roundMinutes * 60_000;
     const elapsed = nowMs - start.getTime();
 
-    if (elapsed < 0) return 0; // not started yet
+    if (elapsed < 0) return 0;
     const r = Math.floor(elapsed / lenMs);
     return mod(r, n);
 }
 
 function assignmentForRound(round) {
-    // returns:
-    // - teamAtStage[stageIndex] = teamIndex or null
-    // - stageOfTeam[teamIndex] = stageIndex
     const n = state.nStages;
     const teamAtStage = Array.from({ length: n }, () => null);
     const stageOfTeam = Array.from({ length: n }, () => 0);
@@ -146,60 +134,57 @@ function assignmentForRound(round) {
         const stage = mod(t.startStage + round, n);
         stageOfTeam[ti] = stage;
         if (teamAtStage[stage] === null) teamAtStage[stage] = ti;
-        else teamAtStage[stage] = -1; // collision marker
+        else teamAtStage[stage] = -1;
     });
 
     return { teamAtStage, stageOfTeam };
 }
 
 function renderWarnings(round) {
-    const n = state.nStages;
     const w = $("#warnings");
     w.innerHTML = "";
 
-    // warn if startStage not a permutation (duplicates)
     const counts = new Map();
     for (const t of state.teams) counts.set(t.startStage, (counts.get(t.startStage) || 0) + 1);
 
-    const dupes = [...counts.entries()].filter(([, c]) => c > 1).map(([s]) => s);
+    // show dupes as 1..10
+    const dupes = [...counts.entries()].filter(([, c]) => c > 1).map(([s]) => s + 1);
+
     if (dupes.length) {
         w.appendChild(el("div", {
-            className: "warn", textContent:
-                `Warning: duplicate starting stages (${dupes.join(", ")}). Two teams may appear on the same stage.`
+            className: "warn",
+            textContent: `Warning: duplicate starting stages (${dupes.join(", ")}). Two teams may appear on the same stage.`
         }));
     } else {
         w.appendChild(el("div", {
-            className: "ok", textContent:
-                "Rotation looks good: each team has a unique starting stage."
+            className: "ok",
+            textContent: "Rotation looks good: each team has a unique starting stage."
         }));
     }
 
-    // warn if auto mode but missing start time
     if (state.mode === "auto" && !parseLocalDateTime(state.startAt)) {
         w.appendChild(el("div", {
-            className: "warn", textContent:
-                "Auto mode is on, but Start time is empty/invalid. Round will stay at 0."
+            className: "warn",
+            textContent: "Auto mode is on, but Start time is empty/invalid. Round will stay at 1."
         }));
     }
 
-    // collision detection for current round
     const { teamAtStage } = assignmentForRound(round);
     const collisions = teamAtStage.filter(x => x === -1).length;
     if (collisions) {
         w.appendChild(el("div", {
-            className: "warn", textContent:
-                `Collision detected this round: at least one stage has multiple teams (fix starting stages).`
+            className: "warn",
+            textContent: `Collision detected this round: at least one stage has multiple teams (fix starting stages).`
         }));
     }
 }
 
 function renderEditors() {
-    // stages editor
     const stagesEditor = $("#stagesEditor");
     stagesEditor.innerHTML = "";
     state.stages.forEach((st, i) => {
         const row = el("div", { className: "editorRow" }, [
-            el("div", { className: "badge", textContent: `${i}` }),
+            el("div", { className: "badge", textContent: `${i + 1}` }),
             el("input", {
                 type: "text",
                 value: st.name,
@@ -220,32 +205,33 @@ function renderEditors() {
                     renderAll();
                 }
             }),
-            el("div", { className: "hint span2", textContent: "Stage index used in rotation. Keep 0–9 unique for best results." })
+            el("div", { className: "hint span2", textContent: "Stage number shown to users is 1–10." })
         ]);
         stagesEditor.appendChild(row);
     });
 
-    // teams editor
     const teamsEditor = $("#teamsEditor");
     teamsEditor.innerHTML = "";
     state.teams.forEach((t, i) => {
         const startSel = el("select", {
-            value: String(t.startStage),
+            value: String(t.startStage + 1), // UI 1..10
             onchange: (e) => {
-                state.teams[i].startStage = mod(parseInt(e.target.value, 10) || 0, state.nStages);
+                const uiVal = parseInt(e.target.value, 10) || 1;        // 1..10
+                state.teams[i].startStage = mod(uiVal - 1, state.nStages); // internal 0..9
                 saveState();
                 renderAll();
             }
         });
 
         for (let s = 0; s < state.nStages; s++) {
-            const opt = el("option", { value: String(s), textContent: `${s}` });
+            const ui = s + 1;
+            const opt = el("option", { value: String(ui), textContent: `${ui}` });
             if (s === t.startStage) opt.selected = true;
             startSel.appendChild(opt);
         }
 
         const row = el("div", { className: "editorRow" }, [
-            el("div", { className: "badge", textContent: `${i}` }),
+            el("div", { className: "badge", textContent: `${i + 1}` }),
             el("input", {
                 type: "text",
                 value: t.name,
@@ -257,10 +243,10 @@ function renderEditors() {
                 }
             }),
             el("div", {}, [
-                el("span", { className: "hint", textContent: "Starting stage" }),
+                el("span", { className: "hint", textContent: "Starting stage (1–10)" }),
                 startSel
             ]),
-            el("div", { className: "hint span2", textContent: "If Team i starts at stage i (0..9), you get a perfect no-collision rotation." })
+            el("div", { className: "hint span2", textContent: "Perfect rotation: Team 1 starts at Stage 1, Team 2 at Stage 2, etc." })
         ]);
 
         teamsEditor.appendChild(row);
@@ -292,7 +278,8 @@ function renderStageView(round) {
                     el("div", { className: "stageName", textContent: stage.name }),
                     el("div", { className: "prof", textContent: stage.professor ? `Prof: ${stage.professor}` : "Prof: —" })
                 ]),
-                el("div", { className: "stageNum", textContent: `#${si}` })
+                // UI stage number: 1..10
+                el("div", { className: "stageNum", textContent: `#${si + 1}` })
             ]),
             el("div", { className: "bigTeam", textContent: teamName }),
             el("div", { className: "nextLine", textContent: "Next:" }),
@@ -319,14 +306,15 @@ function renderTeamView(round) {
         const currStage = curr.stageOfTeam[ti];
         const nextStage = next.stageOfTeam[ti];
 
-        const currStageName = state.stages[currStage]?.name ?? `Stage #${currStage}`;
-        const nextStageName = state.stages[nextStage]?.name ?? `Stage #${nextStage}`;
+        const currStageName = state.stages[currStage]?.name ?? `Stage #${currStage + 1}`;
+        const nextStageName = state.stages[nextStage]?.name ?? `Stage #${nextStage + 1}`;
 
         const card = el("div", { className: "teamCard" }, [
             el("div", { className: "teamTitle", textContent: team.name }),
             el("div", {
-                className: "teamMeta", innerHTML:
-                    `Now: <b>${currStageName}</b> (index #${currStage})<br/>Next: <b>${nextStageName}</b> (index #${nextStage})`
+                className: "teamMeta",
+                innerHTML:
+                    `Now: <b>${currStageName}</b> (stage #${currStage + 1})<br/>Next: <b>${nextStageName}</b> (stage #${nextStage + 1})`
             })
         ]);
         container.appendChild(card);
@@ -335,11 +323,13 @@ function renderTeamView(round) {
 
 function renderStatus(round) {
     const n = state.nStages;
-    $("#kpiRound").textContent = String(round);
-    $("#kpiInfo").textContent = `Next is round ${mod(round + 1, n)} (cycle length ${n})`;
+
+    // UI rounds: 1..10
+    $("#kpiRound").textContent = String(round + 1);
+    $("#kpiInfo").textContent = `Next is round ${mod(round + 1, n) + 1} (cycle length ${n})`;
 
     $("#pillMode").textContent = `Mode: ${state.mode === "auto" ? "Auto" : "Manual"}`;
-    $("#pillCycle").textContent = `Cycle: Round ${round} / ${n - 1}`;
+    $("#pillCycle").textContent = `Cycle: Round ${round + 1} / ${n}`;
 
     const now = new Date();
     $("#pillClock").textContent = `Local time: ${now.toLocaleString()}`;
@@ -363,18 +353,18 @@ function renderAll() {
     }
 }
 
-/* --- Wire up UI --- */
 let state = loadState();
 
 function syncInputsFromState() {
-    // mode radios
     document.querySelectorAll('input[name="mode"]').forEach(r => {
         r.checked = (r.value === state.mode);
     });
 
     $("#startAt").value = state.startAt || "";
     $("#roundMinutes").value = String(state.roundMinutes);
-    $("#manualRound").value = String(state.manualRound);
+
+    // slider is 1..10; state.manualRound is 0..9
+    $("#manualRound").value = String(state.manualRound + 1);
 }
 
 function attachHandlers() {
@@ -425,8 +415,10 @@ function attachHandlers() {
         renderAll();
     });
 
+    // slider UI 1..10 -> internal 0..9
     $("#manualRound").addEventListener("input", (e) => {
-        state.manualRound = mod(Number(e.target.value) || 0, state.nStages);
+        const uiVal = Number(e.target.value) || 1; // 1..10
+        state.manualRound = mod(uiVal - 1, state.nStages);
         saveState();
         renderAll();
     });
@@ -444,7 +436,7 @@ function attachHandlers() {
     $("#btnReset").addEventListener("click", () => {
         state = defaultState();
         saveState();
-        window.location.hash = ""; // clear share
+        window.location.hash = "";
         syncInputsFromState();
         renderEditors();
         renderAll();
@@ -471,7 +463,6 @@ function attachHandlers() {
 }
 
 function boot() {
-    // If loaded via share-link, reflect it and persist it.
     state = normalizeState(state);
     saveState();
 
@@ -480,7 +471,6 @@ function boot() {
     attachHandlers();
     renderAll();
 
-    // tick for auto mode / clock view
     setInterval(() => renderAll(), 1000);
 }
 

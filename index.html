@@ -62,13 +62,12 @@
                 <div class="grid2">
                     <label>
                         <span>Manual round (1–10)</span>
-                        <!-- was: min="0" max="9" value="0" -->
                         <input id="manualRound" type="range" min="1" max="10" value="1" />
                     </label>
 
                     <div class="kpi">
                         <div class="kpiLabel">Current round</div>
-                        <div id="kpiRound" class="kpiValue">0</div>
+                        <div id="kpiRound" class="kpiValue">1</div>
                         <div id="kpiInfo" class="kpiSub">—</div>
                     </div>
                 </div>
@@ -91,7 +90,7 @@
                 <h3>Teams (10)</h3>
                 <div class="hint">
                     Each team also has a <b>starting stage</b>. For a perfect rotation, every team should have a
-                    different start stage (0–9).
+                    different start stage (1–10).
                 </div>
                 <div id="teamsEditor" class="editorList"></div>
             </section>
@@ -110,7 +109,7 @@
         <section class="content" aria-label="Main views">
             <div id="statusBar" class="statusBar">
                 <div class="pill" id="pillMode">Mode: Auto</div>
-                <div class="pill" id="pillCycle">Cycle: Round 0 / 9</div>
+                <div class="pill" id="pillCycle">Cycle: Round 1 / 10</div>
                 <div class="pill" id="pillClock">Local time: —</div>
             </div>
 
